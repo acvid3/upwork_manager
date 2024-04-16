@@ -1,7 +1,6 @@
 require("dotenv").config();
 const axios = require("axios");
 const { Telegraf, Markup } = require("telegraf");
-const cron = require("node-cron");
 
 const token = process.env.TELEGRAM_API_KEY;
 if (token === undefined) {
@@ -9,6 +8,7 @@ if (token === undefined) {
 }
 const bot = new Telegraf(token);
 let searchQuery = "";
+let sendingEnabled = true;
 
 bot.start((ctx) => {
   ctx.reply(
@@ -19,8 +19,19 @@ bot.start((ctx) => {
   );
 });
 
+bot.command("stop", (ctx) => {
+  sendingEnabled = false;
+  ctx.reply("Відправка картинок зупинена.");
+});
+
 bot.action("start_search", (ctx) => {
-  ctx.reply("Введіть дані для пошуку:");
+  sendingEnabled = true;
+
+  ctx.reply(
+    "Вибач, я ще не підключений до Upwork, проте зможу показувати тобі прикольні картинки, сподіваюсь тобі подобаються Рік і Морті. Ти завжди можеш зупинити мене командою /stop"
+  );
+
+  sendData(ctx);
 });
 
 bot.on("text", async (ctx) => {
@@ -51,6 +62,8 @@ bot.on("text", async (ctx) => {
     } else {
       ctx.reply("На жаль, нічого не знайдено за вашим запитом.");
     }
+
+    sendData(ctx);
   } catch (error) {
     console.error("Error:", error);
   }
@@ -59,6 +72,49 @@ bot.on("text", async (ctx) => {
 bot.launch().then(() => {
   console.log("Bot started!");
 });
+
+bot.catch((err) => {
+  console.log("An error occurred:", err);
+});
+
+async function sendData(ctx) {
+  console.log(sendingEnabled, "sendingEnabled");
+  if (!ctx || !sendingEnabled) return;
+
+  const results = await searchData();
+
+  if (results) {
+    bot.telegram
+      .sendPhoto(ctx.chat.id, results)
+      .catch((error) => console.error("Error sending photo:", error));
+  }
+
+  setTimeout(() => sendData(ctx), 120000);
+}
+
+async function searchData() {
+  try {
+    const response = await axios.get(
+      "https://rickandmortyapi.com/api/character"
+    );
+
+    const totalPages = response.data.info.pages;
+    const randomPage = Math.floor(Math.random() * totalPages) + 1;
+
+    const pageResponse = await axios.get(
+      `https://rickandmortyapi.com/api/character?page=${randomPage}`
+    );
+
+    const characters = pageResponse.data.results;
+    const randomCharacter =
+      characters[Math.floor(Math.random() * characters.length)];
+
+    return randomCharacter.image;
+  } catch (error) {
+    console.error("Error searching characters:", error);
+    return null;
+  }
+}
 
 async function searchJobs(params) {
   try {
